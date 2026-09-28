@@ -14,13 +14,26 @@ export async function register(userId, password) {
 }
 
 export async function login(userId, password) {
-  const res = await fetch(`${BASE}/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, password }),
-  });
+  let res;
+  try {
+    res = await fetch(`${BASE}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, password }),
+    });
+  } catch {
+    // fetch 자체가 실패 — 백엔드 서버까지 아예 요청이 안 간 경우입니다.
+    throw new Error("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요");
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `로그인에 실패했습니다 (${res.status})`);
+  if (!res.ok) {
+    // 500번대는 아이디/비밀번호 문제가 아니라 서버(DB 등) 쪽 문제라, "아이디 또는
+    // 비밀번호가 올바르지 않습니다" 같은 인증 실패 메시지로 오해하지 않게 구분합니다.
+    if (res.status >= 500) {
+      throw new Error("서버에 문제가 있어 로그인할 수 없습니다. 잠시 후 다시 시도해 주세요");
+    }
+    throw new Error(data.error || `로그인에 실패했습니다 (${res.status})`);
+  }
   return data; // { token, userId, projectRecent, userName }
 }
 
