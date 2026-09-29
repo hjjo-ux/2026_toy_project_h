@@ -16,6 +16,7 @@ import { query } from "./db.js";
 import { getAllEntries, getEntryById } from "./entries.js";
 import {
   getUnreadEntries,
+  getUnreadComments,
   checkEntry,
   checkAllEntries,
   deleteCheckedForHist,
@@ -551,11 +552,17 @@ app.get("/api/alarms", requireAuth, async (req, res) => {
 
   try {
     const pool = getProjectPool(project);
-    const unread = await getUnreadEntries({
-      userId: req.userId,
-      query: (text, params) => pool.query(text, params),
-    });
-    res.json(unread);
+    const runQuery = (text, params) => pool.query(text, params);
+    const [entries, comments] = await Promise.all([
+      getUnreadEntries({ userId: req.userId, query: runQuery }),
+      // tb_history_comment 가 없는 프로젝트도 있어서(부가 기능), 여기서 실패해도
+      // 이력 알람 자체는 계속 내려가도록 실패를 삼키고 빈 배열로 처리합니다.
+      getUnreadComments({ userId: req.userId, query: runQuery }).catch((err) => {
+        console.warn("[GET /api/alarms] 댓글 알람 조회 실패(무시하고 계속):", err.message);
+        return [];
+      }),
+    ]);
+    res.json({ entries, comments });
   } catch (err) {
     console.error("[GET /api/alarms]", err.message);
     res.status(500).json({ error: "알람 조회 실패", detail: err.message });

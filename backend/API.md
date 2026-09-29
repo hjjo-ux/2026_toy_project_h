@@ -505,12 +505,28 @@ CREATE TABLE tb_alarm_check (
 ### 미확인 목록 조회
 `GET /api/alarms?projectId=` — 인증 필요
 
-로그인한 사용자가 이 프로젝트에서 아직 "확인" 처리하지 않은 이력만 돌려줍니다. 응답
-항목 모양은 `GET /api/history`와 완전히 동일합니다(그중 미확인인 것만 걸러진 부분집합).
+로그인한 사용자가 이 프로젝트에서 아직 "확인" 처리하지 않은 **이력**과 **댓글/대댓글**을
+각각 따로 돌려줍니다. 본인이 쓴 댓글도 예외 없이 안 읽음 대상에 포함됩니다(본인이 편집한
+이력도 똑같이 포함되는 기존 방식과 일관성 유지).
 
 **요청**: 없음
 
-**성공 (200)**: `GET /api/history`와 같은 모양의 이력 항목 배열
+**성공 (200)**
+```json
+{
+  "entries": [ /* GET /api/history 와 같은 모양의 이력 항목 배열 */ ],
+  "comments": [
+    {
+      "id": "comment-42",
+      "targetId": "page-39 (이 댓글이 달린 이력의 id)",
+      "parentCommentId": "number | null (대댓글이면 부모 comment_id)",
+      "userId": "string (작성자)",
+      "content": "string",
+      "createdAt": "timestamp"
+    }
+  ]
+}
+```
 
 **에러**: `400` projectId 누락 · `404` 내 프로젝트가 아님
 
@@ -519,8 +535,9 @@ CREATE TABLE tb_alarm_check (
 ### 개별 확인
 `POST /api/alarms/:id/check?projectId=` — 인증 필요
 
-이력 하나를 "확인함"으로 표시합니다. `id`는 `GET /api/history`가 주는 것과 같은
-`page-39`/`inst-101` 형식입니다. 이미 확인한 것을 또 호출해도 에러 없이 그냥 무시됩니다.
+이력 또는 댓글 하나를 "확인함"으로 표시합니다. `id`는 이력이면 `page-39`/`inst-101`,
+댓글/대댓글이면 `comment-42`(comment_id) 형식입니다. 이미 확인한 것을 또 호출해도
+에러 없이 그냥 무시됩니다.
 
 **요청**: 없음
 
@@ -536,7 +553,7 @@ CREATE TABLE tb_alarm_check (
 ### 전체 확인
 `POST /api/alarms/check-all?projectId=` — 인증 필요
 
-"전체알림확인" 버튼용 — 지금 시점 기준 미확인 전체를 한 번에 확인 처리합니다.
+"전체알림확인" 버튼용 — 지금 시점 기준 미확인 전체(이력 + 댓글/대댓글)를 한 번에 확인 처리합니다.
 
 **요청**: 없음
 
