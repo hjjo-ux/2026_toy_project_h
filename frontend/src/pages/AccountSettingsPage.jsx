@@ -11,7 +11,7 @@ import styles from "./AccountSettingsPage.module.css";
 
 const PASSWORD_MIN = 4;
 const USER_NAME_MAX = 100;
-const EMAIL_MAX = 254;
+const EMAIL_MAX = 320;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AccountSettingsPage() {
@@ -206,7 +206,7 @@ export default function AccountSettingsPage() {
           {nicknameSuccess && <p className={styles.success}>닉네임이 저장되었습니다</p>}
           </form>
 
-          <form className={styles.nicknameForm} onSubmit={handleEmailSubmit}>
+          <form className={styles.nicknameForm} onSubmit={handleEmailSubmit} noValidate>
           <label className={styles.field}>
             <span className={styles.label}>
               이메일<span className={styles.labelOptional}>(선택)</span>
