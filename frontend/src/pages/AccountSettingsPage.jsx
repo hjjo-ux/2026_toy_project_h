@@ -78,7 +78,7 @@ export default function AccountSettingsPage() {
 
     setEmailSubmitting(true);
     try {
-      const { email: saved } = await changeEmail(token, trimmed);
+      const { userEmail: saved } = await changeEmail(token, trimmed);
       setUserEmail(saved);
       setEmail(saved ?? "");
       setEmailSuccess(true);
