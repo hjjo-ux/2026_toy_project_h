@@ -135,6 +135,12 @@
   background: var(--color-accent);
 }
 
+.commentIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+}
+
 .itemBody {
   min-width: 0;
   display: flex;
