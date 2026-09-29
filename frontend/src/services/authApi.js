@@ -65,6 +65,22 @@ export async function changeNickname(token, userName) {
   return data; // { userName }
 }
 
+// 빈 문자열을 보내면 이메일을 지웁니다(백엔드가 null로 저장). 이메일이 없으면
+// 새 이력 알림 메일을 보내지 않는 식으로 쓰입니다.
+export async function changeEmail(token, email) {
+  const res = await fetch(`${BASE}/users/me/email`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `이메일 변경에 실패했습니다 (${res.status})`);
+  return data; // { email }
+}
+
 export async function changePassword(token, currentPassword, newPassword) {
   const res = await fetch(`${BASE}/users/me/password`, {
     method: "PUT",
