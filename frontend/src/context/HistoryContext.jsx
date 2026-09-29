@@ -38,23 +38,29 @@ export function HistoryProvider({ children }) {
   // 포함) 그 순간으로 기준선을 다시 잡아서, 이미 있던 이력이 전부 "새 이력"으로
   // 보이는 걸 막습니다. 그 이후 폴링 등으로 새로 생긴 이력만 새 것으로 간주됩니다.
   const [lastSeenAt, setLastSeenAt] = useState(null);
-  // 백엔드의 진짜 미확인 이력 목록(tb_alarm_check 기반, API_sub_알람관련.md)입니다.
-  // 아직 배포 전이라 null(=모름)로 시작하고, 첫 조회에 성공하면 그때부터 이 값이
-  // lastSeenAt 추정치보다 우선합니다. 배포되면 프론트 수정 없이 자동으로 이 값이
-  // 쓰이게 됩니다.
+  // 백엔드의 진짜 미확인 이력 목록(tb_alarm_check 기반)입니다. 아직 배포 전이라
+  // null(=모름)로 시작하고, 첫 조회에 성공하면 그때부터 이 값이 lastSeenAt
+  // 추정치보다 우선합니다. 배포되면 프론트 수정 없이 자동으로 이 값이 쓰이게 됩니다.
   const [serverAlarmIds, setServerAlarmIds] = useState(null);
+  // 미확인 댓글/대댓글 알림 — 이력과 달리 로컬 추정치가 없어서(원래 없던 개념),
+  // 배포 전에는 그냥 빈 배열입니다.
+  const [commentAlarms, setCommentAlarms] = useState([]);
   useEffect(() => {
     if (projectId) setLastSeenAt(new Date());
     setServerAlarmIds(null);
+    setCommentAlarms([]);
   }, [projectId]);
 
   const refreshAlarms = useCallback(() => {
     if (!token || !projectId) return;
     fetchAlarms(token, projectId)
-      .then((data) => setServerAlarmIds(new Set(data.map((entry) => entry.id))))
+      .then((data) => {
+        setServerAlarmIds(new Set((data.entries ?? []).map((entry) => entry.id)));
+        setCommentAlarms(data.comments ?? []);
+      })
       .catch(() => {
         // /api/alarms가 아직 없거나(404) 실패하면 조용히 넘어가고, 아래
-        // lastSeenAt 기반 추정치를 계속 씁니다.
+        // lastSeenAt 기반 추정치를 계속 씁니다(댓글 알림은 이 경우 그냥 빈 채로 둠).
       });
   }, [token, projectId]);
 
@@ -66,16 +72,20 @@ export function HistoryProvider({ children }) {
     setLastSeenAt(new Date());
     if (token && projectId) {
       checkAllAlarms(token, projectId)
-        .then(() => setServerAlarmIds(new Set()))
+        .then(() => {
+          setServerAlarmIds(new Set());
+          setCommentAlarms([]);
+        })
         .catch(() => {
           // 백엔드 준비 전이면 위에서 이미 처리한 lastSeenAt만으로 동작합니다.
         });
     }
   }, [token, projectId]);
 
-  // 이력 상세/Diff 화면에 들어가면 그 이력 하나만 "확인함"으로 표시합니다.
-  // 백엔드 준비 전이면 실패를 조용히 무시합니다(로컬 추정치는 lastSeenAt 기준으로
-  // 계속 동작하므로 화면엔 영향 없습니다).
+  // 이력 상세/Diff 화면에 들어가면 그 이력 하나만 "확인함"으로 표시합니다. 댓글/
+  // 대댓글 알림(comment-42 형식 id)을 확인 처리할 때도 같은 함수를 씁니다. 백엔드
+  // 준비 전이면 실패를 조용히 무시합니다(로컬 추정치는 lastSeenAt 기준으로 계속
+  // 동작하므로 화면엔 영향 없습니다).
   const checkEntrySeen = useCallback(
     (id) => {
       if (!token || !projectId || !id) return;
@@ -87,6 +97,7 @@ export function HistoryProvider({ children }) {
             next.delete(id);
             return next;
           });
+          setCommentAlarms((prev) => prev.filter((c) => c.id !== id));
         })
         .catch(() => {});
     },
@@ -344,6 +355,7 @@ export function HistoryProvider({ children }) {
         hasProject: Boolean(projectId),
         lastFetchedAt,
         newEntryIds,
+        commentAlarms,
         markAllSeen,
         checkEntrySeen,
         starredIds,
