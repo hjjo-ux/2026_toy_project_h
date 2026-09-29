@@ -18,8 +18,8 @@ import { sendMail } from "./mailer.js";
 const POLL_MINUTES = Number(process.env.ALARM_MAIL_POLL_MINUTES) || 5;
 
 const TARGETS = [
-  { hist_type: "page", table: "tb_page_hist", nameExpr: "COALESCE(title, name)" },
-  { hist_type: "inst", table: "tb_instance_hist", nameExpr: "COALESCE(title, comp_name)" },
+  { hist_type: "page", table: "tb_page_hist", columns: `hist_id, page_id, name, title, "comment"` },
+  { hist_type: "inst", table: "tb_instance_hist", columns: `hist_id, name, title, "comment", comp_name, page_id` },
 ];
 
 // 같은 물리 DB(host+port+db_name)를 여러 프로젝트가 등록해 공유하는 경우(과거
@@ -65,15 +65,33 @@ async function getCursor(pool, { hist_type, table }) {
 
 async function scanNewEntries(pool, target, cursor) {
   const result = await pool.query(
-    `SELECT hist_id, ${target.nameExpr} AS label, reg_dt FROM ${target.table} WHERE hist_id > $1 ORDER BY hist_id ASC`,
+    `SELECT ${target.columns} FROM ${target.table} WHERE hist_id > $1 ORDER BY hist_id ASC`,
     [cursor],
   );
   return result.rows.map((row) => ({
     hist_type: target.hist_type,
     hist_id: Number(row.hist_id),
-    label: row.label,
-    reg_dt: row.reg_dt,
+    name: row.name,
+    title: row.title,
+    comment: row.comment,
+    comp_name: row.comp_name ?? null,
+    page_id: row.page_id ?? null,
   }));
+}
+
+// 컴포넌트(inst)의 "상위 페이지" 이름 조회용. 같은 page_id를 가진 컴포넌트가 한
+// 스캔에 여러 개 나올 수 있어서 캐시로 중복 조회를 피합니다. tb_page가 아니라
+// tb_page_hist에서 찾는 이유: fn_tb_page_hist()가 쓰는 것과 같은 방식(가장 최근
+// 버전)으로, 페이지가 나중에 삭제되어도 이력에는 남아있어 이름을 찾을 수 있습니다.
+async function resolvePageName(pool, pageId, cache) {
+  if (!pageId) return null;
+  if (cache.has(pageId)) return cache.get(pageId);
+  const res = await pool.query(`SELECT name FROM tb_page_hist WHERE page_id = $1 ORDER BY hist_id DESC LIMIT 1`, [
+    pageId,
+  ]);
+  const name = res.rows[0]?.name ?? null;
+  cache.set(pageId, name);
+  return name;
 }
 
 async function scanProjectGroup(projectsInGroup) {
@@ -87,25 +105,52 @@ async function scanProjectGroup(projectsInGroup) {
   }
   if (newEntries.length === 0) return;
 
-  const recipients = await getRecipientEmails(projectsInGroup);
-  const typeLabel = { page: "페이지", inst: "컴포넌트" };
-
+  // 1) claim 단계 — dedup 게이트는 여전히 개별 hist(hist_type+hist_id) 단위로
+  // 정확하게 동작해야 하므로, "이 페이지에 뭐가 있었는지" 묶는 것과 별개로 먼저
+  // 각 항목을 하나씩 claim 시도합니다. 성공한 것만 아래 그룹핑/발송 대상입니다.
+  const claimedEntries = [];
   for (const entry of newEntries) {
-    // 이 hist_id를 처음 claim한 스캔만 아래로 진행됩니다 — 물리 DB를 공유하는
-    // 다른 프로젝트 그룹이나 다음 주기 스캔과 겹쳐도 중복 발송되지 않습니다.
     const claimed = await pool.query(
       `INSERT INTO tb_alarm_mail_log (hist_type, hist_id) VALUES ($1, $2) ON CONFLICT (hist_type, hist_id) DO NOTHING RETURNING log_id`,
       [entry.hist_type, entry.hist_id],
     );
-    if (claimed.rowCount === 0) continue;
-    if (recipients.length === 0) continue; // 로그는 남기되(재알림 방지), 받을 사람 없으면 발송 스킵
+    if (claimed.rowCount > 0) claimedEntries.push(entry);
+  }
+  if (claimedEntries.length === 0) return;
+
+  const recipients = await getRecipientEmails(projectsInGroup);
+  if (recipients.length === 0) return; // 로그는 이미 남겨서(재알림 방지) 받을 사람 없으면 여기서 끝
+
+  // 2) 페이지 단위로 묶기 — 페이지 자체 변경과, 그 페이지에 속한 컴포넌트 변경이
+  // 같은 스캔 주기에 같이 잡히면 메일 하나로 합칩니다. page_id가 없는 컴포넌트
+  // (페이지에 안 붙은 전역 컴포넌트 등)는 묶을 대상이 없어서 각자 따로 보냅니다.
+  const pageNameCache = new Map();
+  const groups = new Map();
+  let looseSeq = 0;
+  for (const entry of claimedEntries) {
+    const key = entry.page_id ?? `__loose_${looseSeq++}`;
+    if (!groups.has(key)) groups.set(key, { pageId: entry.page_id, items: [] });
+    groups.get(key).items.push(entry);
+  }
+
+  for (const { pageId, items } of groups.values()) {
+    const pageEntry = items.find((e) => e.hist_type === "page");
+    const pageName = pageEntry ? pageEntry.title || pageEntry.name : await resolvePageName(pool, pageId, pageNameCache);
+    const displayName = pageName ?? "(페이지 없음)";
+
+    const lines = items.map((entry) => {
+      const head =
+        entry.hist_type === "page"
+          ? `- 페이지 자체 변경 (ID: ${entry.hist_id})`
+          : `- 컴포넌트 변경: ${entry.comp_name ?? "-"} (ID: ${entry.hist_id})`;
+      return `${head}\n  이름: ${entry.name ?? "-"}`;
+    });
+
+    const subject = `[RHH] ${representative.project_name} - 페이지/컴포넌트 변경: ${displayName}`;
+    const text = `${representative.project_name} 프로젝트의 "${displayName}" 페이지에 새 이력이 발생했습니다.\n\n${lines.join("\n\n")}\n\n감지 시각: ${new Date().toLocaleString("ko-KR")}`;
 
     for (const to of recipients) {
-      await sendMail({
-        to,
-        subject: `[RHH] ${representative.project_name} - ${typeLabel[entry.hist_type]} 변경: ${entry.label ?? entry.hist_id}`,
-        text: `${representative.project_name} 프로젝트에 새 이력이 발생했습니다.\n\n종류: ${typeLabel[entry.hist_type]}\n이름: ${entry.label ?? "(제목 없음)"}\n시각: ${entry.reg_dt}\n`,
-      }).catch((err) => console.error("[alarmMailer] 발송 실패:", to, err.message));
+      await sendMail({ to, subject, text }).catch((err) => console.error("[alarmMailer] 발송 실패:", to, err.message));
     }
   }
 }
