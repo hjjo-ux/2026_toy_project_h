@@ -18,8 +18,8 @@ function readStoredAuth() {
 export function AuthProvider({ children }) {
   const [auth, setAuth] = useState(readStoredAuth);
 
-  const login = useCallback((token, userId, projectRecent = null, userName = null) => {
-    const next = { token, userId, projectRecent, userName };
+  const login = useCallback((token, userId, projectRecent = null, userName = null, userEmail = null) => {
+    const next = { token, userId, projectRecent, userName, userEmail };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setAuth(next);
   }, []);
@@ -51,17 +51,30 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  // 이메일 변경 성공 직후 세션에도 바로 반영합니다(재로그인 없이 계정 설정
+  // 화면에 새 이메일이 즉시 보이게 하기 위해서입니다).
+  const setUserEmail = useCallback((userEmail) => {
+    setAuth((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, userEmail };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
         token: auth?.token ?? null,
         userId: auth?.userId ?? null,
         userName: auth?.userName ?? null,
+        userEmail: auth?.userEmail ?? null,
         projectRecent: auth?.projectRecent ?? null,
         login,
         logout,
         setProjectRecent,
         setUserName,
+        setUserEmail,
       }}
     >
       {children}

@@ -125,6 +125,13 @@
   color: var(--color-text-secondary);
 }
 
+.labelOptional {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
 .input {
   padding: 8px 10px;
   font-size: 13px;
