@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useProjects } from "../context/ProjectContext.jsx";
-import { changeNickname, changePassword, deleteAccount } from "../services/authApi.js";
+import { changeNickname, changeEmail, changePassword, deleteAccount } from "../services/authApi.js";
 import Button from "../components/common/Button.jsx";
 import BackLink from "../components/common/BackLink.jsx";
 import PasswordInput from "../components/common/PasswordInput.jsx";
@@ -11,15 +11,21 @@ import styles from "./AccountSettingsPage.module.css";
 
 const PASSWORD_MIN = 4;
 const USER_NAME_MAX = 100;
+const EMAIL_MAX = 320;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AccountSettingsPage() {
   const navigate = useNavigate();
-  const { userId, userName, token, logout, setUserName } = useAuth();
+  const { userId, userName, userEmail, token, logout, setUserName, setUserEmail } = useAuth();
   const { projects } = useProjects();
   const [nickname, setNickname] = useState(userName ?? "");
   const [nicknameError, setNicknameError] = useState("");
   const [nicknameSuccess, setNicknameSuccess] = useState(false);
   const [nicknameSubmitting, setNicknameSubmitting] = useState(false);
+  const [email, setEmail] = useState(userEmail ?? "");
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState(false);
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState(false);
@@ -51,6 +57,35 @@ export default function AccountSettingsPage() {
       setNicknameError(err.message || "닉네임 변경에 실패했습니다");
     } finally {
       setNicknameSubmitting(false);
+    }
+  };
+
+  const handleEmailSubmit = async (event) => {
+    event.preventDefault();
+    if (emailSubmitting) return;
+    setEmailError("");
+    setEmailSuccess(false);
+
+    const trimmed = email.trim();
+    if (trimmed.length > EMAIL_MAX) {
+      setEmailError(`이메일은 ${EMAIL_MAX}자를 넘을 수 없습니다`);
+      return;
+    }
+    if (trimmed && !EMAIL_PATTERN.test(trimmed)) {
+      setEmailError("이메일 형식이 올바르지 않습니다");
+      return;
+    }
+
+    setEmailSubmitting(true);
+    try {
+      const { email: saved } = await changeEmail(token, trimmed);
+      setUserEmail(saved);
+      setEmail(saved ?? "");
+      setEmailSuccess(true);
+    } catch (err) {
+      setEmailError(err.message || "이메일 변경에 실패했습니다");
+    } finally {
+      setEmailSubmitting(false);
     }
   };
 
@@ -169,6 +204,32 @@ export default function AccountSettingsPage() {
           </label>
           {nicknameError && <p className={styles.error}>{nicknameError}</p>}
           {nicknameSuccess && <p className={styles.success}>닉네임이 저장되었습니다</p>}
+          </form>
+
+          <form className={styles.nicknameForm} onSubmit={handleEmailSubmit} noValidate>
+          <label className={styles.field}>
+            <span className={styles.label}>
+              이메일<span className={styles.labelOptional}>(선택)</span>
+            </span>
+            <div className={styles.nicknameRow}>
+              <input
+                type="email"
+                className={styles.input}
+                placeholder="이메일 주소를 입력하세요"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailSuccess(false);
+                }}
+                maxLength={EMAIL_MAX}
+              />
+              <Button type="submit" variant="default" size="sm" disabled={emailSubmitting}>
+                {emailSubmitting ? "저장 중..." : "저장"}
+              </Button>
+            </div>
+          </label>
+          {emailError && <p className={styles.error}>{emailError}</p>}
+          {emailSuccess && <p className={styles.success}>이메일이 저장되었습니다</p>}
           </form>
         </div>
 
