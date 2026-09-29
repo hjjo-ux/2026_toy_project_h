@@ -44,6 +44,31 @@ async function getRecipientEmails(projectsInGroup) {
   return result.rows.map((r) => r.email);
 }
 
+// [프로젝트 연결 화면] 프로젝트를 새로 등록(재연결 포함, 삭제 후 재등록 방식이라
+// 재연결도 결국 이 경로를 탑니다)할 때 호출합니다. 커서를 "지금 시점"으로 미리
+// 당겨서, 연결 끊겨있던 동안(또는 처음 연결하기 전) 쌓인 과거 이력은 건너뛰고
+// 이 시점 이후에 생기는 것부터 알림 대상이 되게 합니다 — getCursor()의 콜드
+// 스타트 시딩과 같은 방식이지만, "로그가 비어있을 때만"이 아니라 매 연결마다
+// 무조건 현재 시점으로 갱신합니다(이미 최신이면 그냥 아무 효과 없음).
+// tb_alarm_mail_log 를 설치 안 한 프로젝트가 대부분이라(선택 기능), 실패는
+// 조용히 무시합니다 — 프로젝트 등록 자체를 막으면 안 되기 때문입니다.
+export async function seedCursorToNow(project) {
+  try {
+    const pool = getProjectPool(project);
+    for (const target of TARGETS) {
+      const curRes = await pool.query(`SELECT MAX(hist_id) AS max_id FROM ${target.table}`);
+      const seed = curRes.rows[0].max_id;
+      if (seed === null) continue;
+      await pool.query(
+        `INSERT INTO tb_alarm_mail_log (hist_type, hist_id) VALUES ($1, $2) ON CONFLICT (hist_type, hist_id) DO NOTHING`,
+        [target.hist_type, seed],
+      );
+    }
+  } catch (err) {
+    console.warn(`[alarmMailer] seedCursorToNow 실패(무시하고 계속): ${project.project_name} -`, err.message);
+  }
+}
+
 async function getCursor(pool, { hist_type, table }) {
   const logRes = await pool.query(`SELECT MAX(hist_id) AS max_id FROM tb_alarm_mail_log WHERE hist_type = $1`, [
     hist_type,
