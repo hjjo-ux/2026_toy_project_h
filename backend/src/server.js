@@ -33,6 +33,7 @@ import {
 } from "./comments.js";
 import { hashPassword, verifyPassword, issueToken, requireAuth } from "./auth.js";
 import { getProjectPool, testConnection, installSchema } from "./projectPool.js";
+import { startAlarmMailScheduler, scanForProject } from "./alarmMailer.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -48,6 +49,10 @@ const PASSWORD_MIN = 4;
 
 // tb_user_rhh.user_name(닉네임)은 varchar(100) 입니다.
 const USER_NAME_MAX = 100;
+
+// tb_user_rhh.email 은 varchar(320) 입니다 (RFC 5321 최대 길이).
+const EMAIL_MAX = 320;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // tb_project_list 의 문자열 컬럼도 전부 varchar(1000) 입니다.
 const PROJECT_FIELD_MAX = 1000;
@@ -112,6 +117,10 @@ function parseId(id) {
 app.get("/api/history", requireAuth, async (req, res) => {
   const project = await resolveOwnedProject(req, res);
   if (!project) return;
+
+  // 새로고침(이 요청 자체)을 기다리게 하지 않고, 폴링 주기와 별개로 이 프로젝트만
+  // 지금 바로 한 번 더 스캔합니다. 응답 지연/실패에 영향 주지 않도록 fire-and-forget.
+  scanForProject(project).catch(() => {});
 
   try {
     const pool = getProjectPool(project);
@@ -736,6 +745,38 @@ app.put("/api/rhh/users/me/nickname", requireAuth, async (req, res) => {
   }
 });
 
+// [계정정보 수정 화면] 이메일 변경. 빈 문자열을 보내면 이메일을 지웁니다(NULL로 저장 —
+// email 도 닉네임처럼 필수 항목이 아니고, 비어있으면 알람 이메일을 보내지 않는다는
+// 의미로도 쓰입니다).
+app.put("/api/rhh/users/me/email", requireAuth, async (req, res) => {
+  const { email } = req.body ?? {};
+
+  if (typeof email !== "string") {
+    return res.status(400).json({ error: "email 을 입력해 주세요" });
+  }
+  const trimmed = email.trim();
+  if (trimmed && !EMAIL_RE.test(trimmed)) {
+    return res.status(400).json({ error: "이메일 형식이 올바르지 않습니다" });
+  }
+  if (trimmed.length > EMAIL_MAX) {
+    return res.status(400).json({ error: `이메일은 ${EMAIL_MAX}자를 넘을 수 없습니다` });
+  }
+
+  try {
+    const result = await query(
+      `UPDATE tb_user_rhh SET email = $1 WHERE user_id = $2 RETURNING email`,
+      [trimmed || null, req.userId],
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "계정을 찾을 수 없습니다" });
+    }
+    res.json({ email: result.rows[0].email });
+  } catch (err) {
+    console.error("[PUT /api/rhh/users/me/email]", err.message);
+    res.status(500).json({ error: "이메일 변경 실패", detail: err.message });
+  }
+});
+
 // [계정정보 수정 화면] 비밀번호 변경. 현재 비밀번호를 확인한 뒤에만 바꿉니다
 // (로그인과 같은 방식으로 bcrypt 비교).
 app.put("/api/rhh/users/me/password", requireAuth, async (req, res) => {
@@ -1032,3 +1073,5 @@ app.listen(PORT, () => {
   console.log(`RHH backend API 실행 중 → http://localhost:${PORT}`);
   console.log(`  DB: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
 });
+
+startAlarmMailScheduler();

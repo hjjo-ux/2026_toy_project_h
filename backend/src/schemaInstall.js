@@ -111,6 +111,15 @@ CREATE TABLE IF NOT EXISTS tb_alarm_check (
   PRIMARY KEY (user_id, hist_type, hist_id)
 )`;
 
+const SQL_TB_ALARM_MAIL_LOG = `
+CREATE TABLE IF NOT EXISTS tb_alarm_mail_log (
+  log_id     BIGSERIAL PRIMARY KEY,
+  hist_type  VARCHAR(10) NOT NULL,
+  hist_id    INTEGER NOT NULL,
+  sent_at    TIMESTAMP NOT NULL DEFAULT now(),
+  UNIQUE (hist_type, hist_id)
+)`;
+
 const SQL_TB_HISTORY_COMMENT = `
 CREATE TABLE IF NOT EXISTS tb_history_comment (
   comment_id        BIGSERIAL PRIMARY KEY,
@@ -235,6 +244,7 @@ const INSTALL_ITEMS = [
   { key: "tb_instance_hist", label: "테이블 tb_instance_hist", statements: [SQL_TB_INSTANCE_HIST] },
   { key: "tb_history_starred", label: "테이블 tb_history_starred", statements: [SQL_TB_HISTORY_STARRED] },
   { key: "tb_alarm_check", label: "테이블 tb_alarm_check", statements: [SQL_TB_ALARM_CHECK] },
+  { key: "tb_alarm_mail_log", label: "테이블 tb_alarm_mail_log", statements: [SQL_TB_ALARM_MAIL_LOG] },
   {
     key: "tb_history_comment",
     label: "테이블 tb_history_comment",
