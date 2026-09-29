@@ -26,6 +26,7 @@
 // "이 이력에 달린 댓글 전체"를 가져오는 쿼리가 대댓글 유무와 무관하게 그대로
 // 동작하게 하기 위함이고, 원댓글/대댓글 구분은 parent_comment_id 로만 합니다.
 import { query as rhhQuery } from "./db.js";
+import { deleteCheckedForComments } from "./alarms.js";
 
 // entries.js 가 만드는 id 는 "page-39" / "inst-101" 형식입니다.
 function splitEntryId(id) {
@@ -134,6 +135,19 @@ export async function deleteComment({ commentId, userId, query: runQuery }) {
   if (existing.rowCount === 0) return "not_found";
   if (existing.rows[0].user_id !== userId) return "forbidden";
 
+  // ON DELETE CASCADE로 대댓글도 같이 지워지므로, 지워지기 전에 영향받을
+  // comment_id(자신 + 모든 대댓글)를 먼저 구해서 tb_alarm_check 기록도 같이 정리합니다.
+  const affected = await runQuery(
+    `WITH RECURSIVE descendants AS (
+       SELECT comment_id FROM tb_history_comment WHERE comment_id = $1
+       UNION ALL
+       SELECT c.comment_id FROM tb_history_comment c JOIN descendants d ON c.parent_comment_id = d.comment_id
+     )
+     SELECT comment_id FROM descendants`,
+    [commentId],
+  );
+  await deleteCheckedForComments({ commentIds: affected.rows.map((row) => row.comment_id), query: runQuery });
+
   await runQuery(`DELETE FROM tb_history_comment WHERE comment_id = $1`, [commentId]);
   return "ok";
 }
@@ -144,10 +158,12 @@ export async function deleteComment({ commentId, userId, query: runQuery }) {
 // 하므로 여기서 실패를 삼킵니다.
 export async function deleteCommentsForHist({ histType, histId, query: runQuery }) {
   try {
-    await runQuery(`DELETE FROM tb_history_comment WHERE hist_type = $1 AND hist_id = $2`, [
+    const ids = await runQuery(`SELECT comment_id FROM tb_history_comment WHERE hist_type = $1 AND hist_id = $2`, [
       histType,
       histId,
     ]);
+    await deleteCheckedForComments({ commentIds: ids.rows.map((row) => row.comment_id), query: runQuery });
+    await runQuery(`DELETE FROM tb_history_comment WHERE hist_type = $1 AND hist_id = $2`, [histType, histId]);
   } catch (err) {
     console.warn("[deleteCommentsForHist] 정리 실패(무시하고 계속):", err.message);
   }
@@ -160,6 +176,15 @@ export async function deleteCommentsForHists({ entries, query: runQuery }) {
   try {
     const pageIds = entries.filter((e) => e.histType === "page").map((e) => e.histId);
     const instIds = entries.filter((e) => e.histType === "inst").map((e) => e.histId);
+
+    const affected = await runQuery(
+      `SELECT comment_id FROM tb_history_comment
+       WHERE (hist_type = 'page' AND hist_id = ANY($1::int[]))
+          OR (hist_type = 'inst' AND hist_id = ANY($2::int[]))`,
+      [pageIds, instIds],
+    );
+    await deleteCheckedForComments({ commentIds: affected.rows.map((row) => row.comment_id), query: runQuery });
+
     if (pageIds.length > 0) {
       await runQuery(`DELETE FROM tb_history_comment WHERE hist_type = 'page' AND hist_id = ANY($1::int[])`, [
         pageIds,
