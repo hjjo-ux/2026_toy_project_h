@@ -34,7 +34,7 @@ export async function login(userId, password) {
     }
     throw new Error(data.error || `로그인에 실패했습니다 (${res.status})`);
   }
-  return data; // { token, userId, projectRecent, userName }
+  return data; // { token, userId, projectRecent, userName, userEmail }
 }
 
 // 로그인이 안 된 상태에서 아이디만으로 비밀번호를 바꿉니다. 본인 확인(인증)
@@ -74,11 +74,11 @@ export async function changeEmail(token, email) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ userEmail: email }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `이메일 변경에 실패했습니다 (${res.status})`);
-  return data; // { email }
+  return data; // { userEmail }
 }
 
 export async function changePassword(token, currentPassword, newPassword) {
