@@ -649,7 +649,7 @@ app.post("/api/rhh/login", async (req, res) => {
 
   try {
     const result = await query(
-      `SELECT user_id, password, project_recent, use, user_name FROM tb_user_rhh WHERE user_id = $1`,
+      `SELECT user_id, password, project_recent, use, user_name, email FROM tb_user_rhh WHERE user_id = $1`,
       [userId],
     );
     const row = result.rows[0];
@@ -674,6 +674,7 @@ app.post("/api/rhh/login", async (req, res) => {
       userId: row.user_id,
       projectRecent: row.project_recent,
       userName: row.user_name,
+      userEmail: row.email,
     });
   } catch (err) {
     console.error("[POST /api/rhh/login]", err.message);
@@ -749,12 +750,12 @@ app.put("/api/rhh/users/me/nickname", requireAuth, async (req, res) => {
 // email 도 닉네임처럼 필수 항목이 아니고, 비어있으면 알람 이메일을 보내지 않는다는
 // 의미로도 쓰입니다).
 app.put("/api/rhh/users/me/email", requireAuth, async (req, res) => {
-  const { email } = req.body ?? {};
+  const { userEmail } = req.body ?? {};
 
-  if (typeof email !== "string") {
-    return res.status(400).json({ error: "email 을 입력해 주세요" });
+  if (typeof userEmail !== "string") {
+    return res.status(400).json({ error: "userEmail 을 입력해 주세요" });
   }
-  const trimmed = email.trim();
+  const trimmed = userEmail.trim();
   if (trimmed && !EMAIL_RE.test(trimmed)) {
     return res.status(400).json({ error: "이메일 형식이 올바르지 않습니다" });
   }
@@ -770,7 +771,7 @@ app.put("/api/rhh/users/me/email", requireAuth, async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "계정을 찾을 수 없습니다" });
     }
-    res.json({ email: result.rows[0].email });
+    res.json({ userEmail: result.rows[0].email });
   } catch (err) {
     console.error("[PUT /api/rhh/users/me/email]", err.message);
     res.status(500).json({ error: "이메일 변경 실패", detail: err.message });
