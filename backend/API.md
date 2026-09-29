@@ -89,7 +89,8 @@
   "token": "JWT 문자열 — 이후 요청에 계속 사용",
   "userId": "string",
   "projectRecent": "string | null",
-  "userName": "string | null (닉네임, 안 정했으면 null)"
+  "userName": "string | null (닉네임, 안 정했으면 null)",
+  "userEmail": "string | null (안 정했으면 null)"
 }
 ```
 
@@ -124,12 +125,12 @@
 
 **요청**
 ```json
-{ "email": "string (최대 320자, 빈 문자열이면 삭제)" }
+{ "userEmail": "string (최대 320자, 빈 문자열이면 삭제)" }
 ```
 
 **성공 (200)**
 ```json
-{ "email": "string | null" }
+{ "userEmail": "string | null" }
 ```
 
 **에러**: `400` 형식/길이 오류 · `404` 계정 없음
