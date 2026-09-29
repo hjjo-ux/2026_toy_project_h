@@ -33,7 +33,7 @@ import {
 } from "./comments.js";
 import { hashPassword, verifyPassword, issueToken, requireAuth } from "./auth.js";
 import { getProjectPool, testConnection, installSchema } from "./projectPool.js";
-import { startAlarmMailScheduler, scanForProject } from "./alarmMailer.js";
+import { startAlarmMailScheduler, scanForProject, seedCursorToNow } from "./alarmMailer.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -998,6 +998,9 @@ app.post("/api/rhh/projects", requireAuth, async (req, res) => {
        RETURNING *`,
       [projectName, host, portNum, dbName, account, password, req.userId],
     );
+    // 연결(재연결 포함) 시점 이전에 쌓인 이력은 알람 메일 대상에서 건너뛰도록
+    // 커서를 지금 시점으로 당겨둡니다 — 응답을 기다리게 하지 않고 fire-and-forget.
+    seedCursorToNow(result.rows[0]).catch(() => {});
     res.status(201).json(toProjectDto(result.rows[0]));
   } catch (err) {
     console.error("[POST /api/rhh/projects]", err.message);
