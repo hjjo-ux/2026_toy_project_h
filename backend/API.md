@@ -27,6 +27,7 @@
 | 인증/계정 | POST | `/api/rhh/users` | 불필요 | SignupPage.jsx |
 | 인증/계정 | POST | `/api/rhh/login` | 불필요 | LoginPage.jsx, SignupPage.jsx(가입 후 자동 로그인) |
 | 인증/계정 | PUT | `/api/rhh/users/me/nickname` | 필요 | AccountSettingsPage.jsx |
+| 인증/계정 | PUT | `/api/rhh/users/me/email` | 필요 | *(미구현 화면 — 계정정보 수정의 이메일 수정 예정)* |
 | 인증/계정 | PUT | `/api/rhh/users/me/password` | 필요 | AccountSettingsPage.jsx |
 | 인증/계정 | DELETE | `/api/rhh/users/me` | 필요 | AccountSettingsPage.jsx |
 | 인증/계정 | PUT | `/api/rhh/users/password-reset` | 불필요 | *(미구현 화면 — 로그인 화면의 "패스워드 찾기" 페이지 예정)* |
@@ -109,6 +110,26 @@
 **성공 (200)**
 ```json
 { "userName": "string | null" }
+```
+
+**에러**: `400` 형식/길이 오류 · `404` 계정 없음
+
+---
+
+### 이메일 변경
+`PUT /api/rhh/users/me/email` — 인증 필요
+
+계정정보 수정 화면에서 사용합니다. 빈 문자열을 보내면 이메일을 지웁니다(DB엔 `null`로
+저장) — 비어있으면 알람 이메일도 발송되지 않습니다(예정 기능).
+
+**요청**
+```json
+{ "email": "string (최대 320자, 빈 문자열이면 삭제)" }
+```
+
+**성공 (200)**
+```json
+{ "email": "string | null" }
 ```
 
 **에러**: `400` 형식/길이 오류 · `404` 계정 없음
