@@ -4,16 +4,31 @@ import { useHistoryOptional } from "../../context/HistoryContext.jsx";
 import Icon from "./Icon.jsx";
 import styles from "./NotificationBell.module.css";
 
-// 읽음/안읽음은 아직 백엔드에 없어서(추후 백엔드 팀원과 별도 설계 예정), 지금은
+function formatTimestamp(iso) {
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const COMMENT_PREVIEW_MAX = 40;
+function truncate(text) {
+  if (!text) return "";
+  return text.length > COMMENT_PREVIEW_MAX ? `${text.slice(0, COMMENT_PREVIEW_MAX)}…` : text;
+}
+
+// 이력 읽음/안읽음은 아직 백엔드에 없어서(추후 백엔드 팀원과 별도 설계 예정), 지금은
 // 세션 동안만 기억하는 lastSeenAt 기준으로 "새 이력"을 가립니다. HistoryContext의
 // newEntryIds가 같은 기준을 이력 리스트 쪽(PRCard)과도 공유해서, 알림에 뜬 항목이
-// 리스트에서도 동일하게 "새 이력"으로 보입니다. "전부 확인"을 누르면 기준 시각이
-// 지금으로 당겨져서 알림/리스트 표시가 함께 사라집니다.
+// 리스트에서도 동일하게 "새 이력"으로 보입니다. 댓글/대댓글 알림은 백엔드가
+// tb_alarm_check 기반으로 진짜 안읽음을 내려주는 commentAlarms를 그대로 씁니다.
+// "전부 확인"을 누르면 이력/댓글 알림이 한 번에 같이 사라집니다.
 export default function NotificationBell() {
   const history = useHistoryOptional();
   const entries = history?.entries;
   const newEntryIds = history?.newEntryIds;
+  const commentAlarms = history?.commentAlarms;
   const markAllSeen = history?.markAllSeen;
+  const checkEntrySeen = history?.checkEntrySeen;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -42,7 +57,34 @@ export default function NotificationBell() {
       .sort((a, b) => new Date(b.savedAtRaw) - new Date(a.savedAtRaw));
   }, [entries, newEntryIds]);
 
-  const unreadCount = newEntryIds?.size ?? 0;
+  // 이력 알림과 댓글/대댓글 알림을 시간순으로 합쳐서 하나의 피드로 보여줍니다.
+  const notifications = useMemo(() => {
+    const entryItems = newEntries.map((entry) => ({
+      key: entry.id,
+      id: entry.id,
+      to: `/history/${entry.id}`,
+      isComment: false,
+      label: entry.targetLabel,
+      title: entry.title,
+      time: entry.savedAt,
+      timeRaw: entry.savedAtRaw,
+    }));
+    const commentItems = (commentAlarms ?? []).map((comment) => ({
+      key: comment.id,
+      id: comment.id,
+      to: `/history/${comment.targetId}`,
+      isComment: true,
+      label: comment.parentCommentId != null ? "답글" : "댓글",
+      title: `${comment.userId}: ${truncate(comment.content)}`,
+      time: formatTimestamp(comment.createdAt),
+      timeRaw: comment.createdAt,
+    }));
+    return [...entryItems, ...commentItems].sort(
+      (a, b) => new Date(b.timeRaw) - new Date(a.timeRaw),
+    );
+  }, [newEntries, commentAlarms]);
+
+  const unreadCount = (newEntryIds?.size ?? 0) + (commentAlarms?.length ?? 0);
 
   return (
     <div className={styles.wrap} ref={wrapRef}>
@@ -68,31 +110,38 @@ export default function NotificationBell() {
             <button
               type="button"
               className={styles.markAllBtn}
-              disabled={newEntries.length === 0}
+              disabled={notifications.length === 0}
               onClick={() => markAllSeen?.()}
             >
               전부 확인
             </button>
           </div>
 
-          {newEntries.length === 0 ? (
+          {notifications.length === 0 ? (
             <p className={styles.empty}>아직 알림이 없습니다</p>
           ) : (
             <ul className={styles.list}>
-              {newEntries.map((entry) => (
-                <li key={entry.id}>
+              {notifications.map((item) => (
+                <li key={item.key}>
                   <Link
-                    to={`/history/${entry.id}`}
+                    to={item.to}
                     className={styles.item}
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      setOpen(false);
+                      if (item.isComment) checkEntrySeen?.(item.id);
+                    }}
                   >
-                    <span className={styles.dot} aria-hidden="true" />
+                    {item.isComment ? (
+                      <Icon name="comment" size={12} className={styles.commentIcon} />
+                    ) : (
+                      <span className={styles.dot} aria-hidden="true" />
+                    )}
                     <span className={styles.itemBody}>
                       <span className={styles.itemTitleRow}>
-                        <span className={styles.itemTarget}>{entry.targetLabel}</span>
-                        <span className={styles.itemTitle}>{entry.title}</span>
+                        <span className={styles.itemTarget}>{item.label}</span>
+                        <span className={styles.itemTitle}>{item.title}</span>
                       </span>
-                      <span className={styles.itemTime}>{entry.savedAt}</span>
+                      <span className={styles.itemTime}>{item.time}</span>
                     </span>
                   </Link>
                 </li>
