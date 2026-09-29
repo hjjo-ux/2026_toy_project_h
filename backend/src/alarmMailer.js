@@ -131,6 +131,33 @@ export async function runAlarmMailScan() {
   }
 }
 
+// [전체 이력 보기 화면] 새로고침(= GET /api/history 호출) 시, 폴링 주기(기본 5분)를
+// 기다리지 않고 "지금 보고 있는 이 프로젝트"만 즉시 한 번 더 스캔하기 위한 진입점.
+// 같은 물리 DB(host+port+db_name)를 공유하는 다른 프로젝트가 있으면 그것도 같이
+// 묶어서(수신자 병합) 스캔합니다 — runAlarmMailScan()의 그룹 하나만 떼어낸 것과 동일.
+// 호출부에서 await 하지 않고 fire-and-forget으로 쓰는 걸 전제로, 에러를 여기서
+// 전부 삼켜 호출부에 영향을 주지 않습니다.
+export async function scanForProject(project) {
+  let group;
+  try {
+    const result = await rhhQuery(
+      `SELECT * FROM tb_project_list WHERE use = true AND host = $1 AND port = $2 AND db_name = $3`,
+      [project.host, project.port, project.db_name],
+    );
+    group = result.rows;
+  } catch (err) {
+    console.error("[alarmMailer] scanForProject 그룹 조회 실패:", err.message);
+    return;
+  }
+  if (group.length === 0) group = [project];
+
+  try {
+    await scanProjectGroup(group);
+  } catch (err) {
+    console.error(`[alarmMailer] "${project.project_name}" 즉시 스캔 실패:`, err.message);
+  }
+}
+
 export function startAlarmMailScheduler() {
   cron.schedule(`*/${POLL_MINUTES} * * * *`, () => {
     runAlarmMailScan().catch((err) => console.error("[alarmMailer] 스캔 중 오류:", err.message));

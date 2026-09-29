@@ -33,6 +33,7 @@ import {
 } from "./comments.js";
 import { hashPassword, verifyPassword, issueToken, requireAuth } from "./auth.js";
 import { getProjectPool, testConnection, installSchema } from "./projectPool.js";
+import { startAlarmMailScheduler, scanForProject } from "./alarmMailer.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -116,6 +117,10 @@ function parseId(id) {
 app.get("/api/history", requireAuth, async (req, res) => {
   const project = await resolveOwnedProject(req, res);
   if (!project) return;
+
+  // 새로고침(이 요청 자체)을 기다리게 하지 않고, 폴링 주기와 별개로 이 프로젝트만
+  // 지금 바로 한 번 더 스캔합니다. 응답 지연/실패에 영향 주지 않도록 fire-and-forget.
+  scanForProject(project).catch(() => {});
 
   try {
     const pool = getProjectPool(project);
@@ -1068,3 +1073,5 @@ app.listen(PORT, () => {
   console.log(`RHH backend API 실행 중 → http://localhost:${PORT}`);
   console.log(`  DB: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
 });
+
+startAlarmMailScheduler();
