@@ -33,8 +33,7 @@ function splitEntryId(id) {
 
 // 이 프로젝트에 달린 댓글/대댓글 전체를, 이력 항목과 같은 방식으로 확인 처리할 수
 // 있도록 id("comment-42")를 붙여서 돌려줍니다. 페이지/인스턴스 이력과 모양이 달라서
-// (작성자/내용 등) 같은 배열에 안 섞고 별도로 다룹니다 — 본인이 쓴 댓글도 페이지
-// 편집자를 안 가리는 지금 방식과 똑같이 예외 없이 "안 읽음" 대상에 포함합니다.
+// (작성자/내용 등) 같은 배열에 안 섞고 별도로 다룹니다.
 async function fetchAllComments(runQuery) {
   const { rows } = await runQuery(
     `SELECT comment_id, hist_type, hist_id, parent_comment_id, user_id, content, created_at
@@ -50,10 +49,12 @@ async function fetchAllComments(runQuery) {
   }));
 }
 
-// 로그인한 사용자가 아직 확인하지 않은 댓글/대댓글만 돌려줍니다.
+// 로그인한 사용자가 아직 확인하지 않은 댓글/대댓글만 돌려줍니다. 본인이 쓴
+// 댓글/대댓글은 본인에게는 애초에 "새 알림"이 아니므로 제외합니다(팀원에게는
+// 그대로 보임 — userId 기준으로 각자 다르게 걸러지는 부분이라 자연히 됩니다).
 export async function getUnreadComments({ userId, query: runQuery = defaultQuery }) {
   const [comments, checkedIds] = await Promise.all([fetchAllComments(runQuery), fetchCheckedIds(runQuery, userId)]);
-  return comments.filter((comment) => !checkedIds.has(comment.id));
+  return comments.filter((comment) => comment.userId !== userId && !checkedIds.has(comment.id));
 }
 
 async function fetchCheckedIds(runQuery, userId) {
