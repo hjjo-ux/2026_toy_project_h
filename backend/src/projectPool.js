@@ -73,7 +73,7 @@ const BASE_TABLES = ["tb_page", "tb_instance"];
 // 화면]에서 "이 DB에 이력 저장 트리거가 있는지"를 실제로 보여주기 위해 씁니다.
 const REQUIRED_TABLES = ["tb_page_hist", "tb_instance_hist"];
 const REQUIRED_TRIGGERS = ["trg_tb_page_hist", "trg_tb_instance_hist"];
-const OPTIONAL_TABLES = ["tb_history_starred", "tb_alarm_check", "tb_history_comment"];
+const OPTIONAL_TABLES = ["tb_history_starred", "tb_alarm_check", "tb_history_comment", "tb_alarm_mail_log"];
 
 // tb_user_rhh/tb_project_list 는 원래 RHH 관리용 고정 DB에만 있어야 하는 테이블이라
 // "이 대상 DB"에서 확인할 이유가 원래는 없지만, [프로젝트 연결 화면]의 자동 설치가
