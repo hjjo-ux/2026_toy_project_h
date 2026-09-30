@@ -35,13 +35,22 @@ function groupProjectsByTarget(projects) {
   return [...groups.values()];
 }
 
-async function getRecipientEmails(projectsInGroup) {
-  const userIds = [...new Set(projectsInGroup.map((p) => p.user_id))];
+// 수신자 각자가 "본인이 등록한 이름"으로 프로젝트명을 보게끔, email과 함께 그
+// 사용자의 project_name도 같이 돌려줍니다(같은 물리 DB를 서로 다른 이름으로 등록해둔
+// 경우 사람마다 메일에 찍히는 프로젝트명이 달라집니다). projectsInGroup에 이미
+// user_id별 project_name이 다 있어서 추가 쿼리 없이 매핑만 하면 됩니다 — 같은
+// 사용자가 이 DB를 여러 이름으로 중복 등록해뒀으면 먼저 나온 것을 씁니다.
+async function getRecipients(projectsInGroup) {
+  const nameByUser = new Map();
+  for (const p of projectsInGroup) {
+    if (!nameByUser.has(p.user_id)) nameByUser.set(p.user_id, p.project_name);
+  }
+  const userIds = [...nameByUser.keys()];
   const result = await rhhQuery(
-    `SELECT DISTINCT email FROM tb_user_rhh WHERE user_id = ANY($1) AND email IS NOT NULL AND email <> ''`,
+    `SELECT user_id, email FROM tb_user_rhh WHERE user_id = ANY($1) AND email IS NOT NULL AND email <> ''`,
     [userIds],
   );
-  return result.rows.map((r) => r.email);
+  return result.rows.map((row) => ({ email: row.email, projectName: nameByUser.get(row.user_id) }));
 }
 
 // [프로젝트 연결 화면] 프로젝트를 새로 등록(재연결 포함, 삭제 후 재등록 방식이라
@@ -143,7 +152,7 @@ async function scanProjectGroup(projectsInGroup) {
   }
   if (claimedEntries.length === 0) return;
 
-  const recipients = await getRecipientEmails(projectsInGroup);
+  const recipients = await getRecipients(projectsInGroup);
   if (recipients.length === 0) return; // 로그는 이미 남겨서(재알림 방지) 받을 사람 없으면 여기서 끝
 
   // 2) 페이지 단위로 묶기 — 페이지 자체 변경과, 그 페이지에 속한 컴포넌트 변경이
@@ -171,11 +180,14 @@ async function scanProjectGroup(projectsInGroup) {
       return `${head}\n  이름: ${entry.name ?? "-"}`;
     });
 
-    const subject = `[RHH] ${representative.project_name} - 페이지/컴포넌트 변경: ${displayName}`;
-    const text = `${representative.project_name} 프로젝트의 "${displayName}" 페이지에 새 이력이 발생했습니다.\n\n${lines.join("\n\n")}\n\n감지 시각: ${new Date().toLocaleString("ko-KR")}`;
+    const detectedAt = new Date().toLocaleString("ko-KR");
 
-    for (const to of recipients) {
-      await sendMail({ to, subject, text }).catch((err) => console.error("[alarmMailer] 발송 실패:", to, err.message));
+    for (const { email, projectName } of recipients) {
+      const subject = `[RHH] ${projectName} - 페이지/컴포넌트 변경: ${displayName}`;
+      const text = `${projectName} 프로젝트의 "${displayName}" 페이지에 새 이력이 발생했습니다.\n\n${lines.join("\n\n")}\n\n감지 시각: ${detectedAt}`;
+      await sendMail({ to: email, subject, text }).catch((err) =>
+        console.error("[alarmMailer] 발송 실패:", email, err.message),
+      );
     }
   }
 }
