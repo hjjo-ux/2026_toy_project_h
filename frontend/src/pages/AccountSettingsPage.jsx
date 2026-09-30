@@ -211,6 +211,7 @@ export default function AccountSettingsPage() {
             <span className={styles.label}>
               이메일<span className={styles.labelOptional}>(선택)</span>
             </span>
+            <p className={styles.hint}>등록하면 새 이력이 발생했을 때 이메일로 알림을 받을 수 있어요</p>
             <div className={styles.nicknameRow}>
               <input
                 type="email"
