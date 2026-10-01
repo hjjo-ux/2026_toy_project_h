@@ -108,8 +108,15 @@ CREATE TABLE IF NOT EXISTS tb_alarm_check (
   hist_type  VARCHAR(10) NOT NULL,
   hist_id    INTEGER NOT NULL,
   checked_at TIMESTAMP NOT NULL DEFAULT now(),
+  entry_saved_at VARCHAR(20) NULL,
   PRIMARY KEY (user_id, hist_type, hist_id)
 )`;
+// CREATE TABLE IF NOT EXISTS 는 테이블이 이미 있으면 건너뛰므로, hist_id 재사용(DB
+// 리셋) 버그 수정 전에 이미 tb_alarm_check를 설치해둔 프로젝트는 이 컬럼이 없을 수
+// 있습니다. tb_history_comment_reply와 같은 패턴으로 별도 컬럼 체크/항목을 둡니다.
+const SQL_ALTER_ALARM_CHECK_ENTRY_SAVED_AT = `
+ALTER TABLE tb_alarm_check
+  ADD COLUMN IF NOT EXISTS entry_saved_at VARCHAR(20)`;
 
 const SQL_TB_ALARM_MAIL_LOG = `
 CREATE TABLE IF NOT EXISTS tb_alarm_mail_log (
@@ -258,6 +265,11 @@ const INSTALL_ITEMS = [
     key: "tb_history_comment_reply",
     label: "컬럼 tb_history_comment.parent_comment_id (대댓글)",
     statements: [SQL_ALTER_HISTORY_COMMENT_PARENT, SQL_IDX_HISTORY_COMMENT_PARENT],
+  },
+  {
+    key: "tb_alarm_check_entry_saved_at",
+    label: "컬럼 tb_alarm_check.entry_saved_at (hist_id 재사용 대응)",
+    statements: [SQL_ALTER_ALARM_CHECK_ENTRY_SAVED_AT],
   },
   {
     key: "trg_tb_page_hist",

@@ -90,7 +90,10 @@ const MANAGEMENT_TABLES = ["tb_user_rhh", "tb_project_list"];
 // 별개의 컬럼 단위 확인입니다. "테이블 있음" 체크만으로는 이 컬럼이 없는 예전
 // 설치를 구분할 수 없어서 따로 둡니다 — 이게 없으면 "자동 설치"가 테이블이 이미
 // 있다는 이유로 컬럼 추가를 건너뛰어 버립니다.
-const COLUMN_CHECKS = [{ key: "tb_history_comment_reply", table: "tb_history_comment", column: "parent_comment_id" }];
+const COLUMN_CHECKS = [
+  { key: "tb_history_comment_reply", table: "tb_history_comment", column: "parent_comment_id" },
+  { key: "tb_alarm_check_entry_saved_at", table: "tb_alarm_check", column: "entry_saved_at" },
+];
 
 async function checkSchema(client) {
   const tableNames = [...BASE_TABLES, ...REQUIRED_TABLES, ...OPTIONAL_TABLES, ...MANAGEMENT_TABLES];
