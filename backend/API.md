@@ -33,6 +33,7 @@
 | 인증/계정 | PUT | `/api/rhh/users/password-reset` | 불필요 | *(미구현 화면 — 로그인 화면의 "패스워드 찾기" 페이지 예정)* |
 | 프로젝트 | GET | `/api/rhh/projects` | 필요 | LoginPage.jsx, ProjectContext.jsx(전역 목록) |
 | 프로젝트 | POST | `/api/rhh/projects/test-connection` | 필요 | ProjectConnectPage.jsx |
+| 프로젝트 | POST | `/api/rhh/projects/install-schema` | 필요 | *(미구현 화면 — 자동 설치 버튼 예정)* |
 | 프로젝트 | POST | `/api/rhh/projects` | 필요 | ProjectConnectPage.jsx (ProjectContext.jsx 경유) |
 | 프로젝트 | PUT | `/api/rhh/projects/:projectId/name` | 필요 | ProjectConnectPage.jsx (ProjectContext.jsx 경유) |
 | 프로젝트 | DELETE | `/api/rhh/projects/:projectId` | 필요 | ProjectConnectPage.jsx, ProjectSwitcher.jsx (ProjectContext.jsx 경유) |
@@ -42,6 +43,10 @@
 | 이력 | GET | `/api/history/compare` | 필요 | *(미사용 — 목록에서 두 항목 직접 찾아 씀)* |
 | 이력 | PUT | `/api/history/:id/metadata` | 필요 | HistoryListPage.jsx, HistoryDetailPage.jsx (HistoryContext.jsx 경유) |
 | 이력 | PUT | `/api/history/:id/important` | 필요 | *(미구현 화면 — 중요 표시(⭐) 예정)* |
+| 이력 | GET | `/api/history/:id/comments` | 필요 | *(미구현 화면 — 댓글창 예정)* |
+| 이력 | POST | `/api/history/:id/comments` | 필요 | *(미구현 화면 — 댓글창 예정)* |
+| 이력 | PUT | `/api/history/comments/:commentId` | 필요 | *(미구현 화면 — 댓글창 예정)* |
+| 이력 | DELETE | `/api/history/comments/:commentId` | 필요 | *(미구현 화면 — 댓글창 예정)* |
 | 이력 | GET | `/api/history/trash` | 필요 | *(미구현 화면 — 휴지통 화면 예정)* |
 | 이력 | DELETE | `/api/history/:id` | 필요 | *(미구현 화면 — 휴지통 화면의 개별 삭제 예정)* |
 | 이력 | DELETE | `/api/history/trash` | 필요 | *(미구현 화면 — 휴지통 비우기 예정)* |
@@ -241,13 +246,80 @@
 
 **응답 (성공/실패 모두 200)**
 ```json
-{ "ok": true }
+{
+  "ok": true,
+  "schema": {
+    "base":       { "tb_page": true, "tb_instance": true },
+    "required":   { "tb_page_hist": true, "tb_instance_hist": true, "trg_tb_page_hist": true, "trg_tb_instance_hist": true },
+    "optional":   { "tb_history_starred": false, "tb_alarm_check": false, "tb_history_comment": false, "tb_alarm_mail_log": false },
+    "management": { "tb_user_rhh": false, "tb_project_list": false }
+  }
+}
 ```
 ```json
 { "ok": false, "error": "실패 사유" }
 ```
+- `schema`가 `null`일 수도 있음 = "확인 자체에 실패"(예: 권한 문제) → **"없음"과 다르게 취급**해야 함(아래 화면 표시 규칙 참고)
+- `management`(`tb_user_rhh`/`tb_project_list`)는 화면에 굳이 안 보여줘도 됨 — 자동 설치 대상에는 포함되지만 사용자에게 중요한 정보는 아님
 
 **에러(요청 자체가 잘못된 경우만)**: `400` 필수 필드 누락, port 범위 오류
+
+#### 경우의 수별 화면 표시 규칙
+
+| # | `tb_page`/`tb_instance` | `tb_page_hist`/트리거 | 화면에 보여줄 것 | `[프로젝트 연결]` 버튼 |
+|---|---|---|---|---|
+| 1 | **없음** | (확인 안 해도 됨) | ⚠️ "RENOBIT이 설치되지 않은 DB입니다" | **비활성화** |
+| 2 | 있음 | **없음** | ⚠️ "이력 저장 기능이 아직 설치되지 않았습니다" + `[자동 설치]` 버튼 | 활성화(경고만, 안 막음) |
+| 3 | 있음 | 있음 | ✅ 정상 | 활성화 |
+| — | `schema === null`(확인 실패) | — | 경고 없이 그냥 통과 | 활성화(막지 않음) |
+
+**부가 기능**(`optional`: `tb_history_starred`/`tb_alarm_check`/`tb_history_comment`/`tb_alarm_mail_log`)은 위 표와 무관하게 항상 정보성으로만 보여주면 되고, 없어도 경고·차단 없음.
+
+---
+
+### 자동 설치
+`POST /api/rhh/projects/install-schema` — 인증 필요
+
+[연결 테스트] 결과 표의 #2 상태일 때 노출되는 `[자동 설치]` 버튼에서 호출합니다.
+**연결 테스트와 별개의, 사용자가 한 번 더 눌러야 하는 액션**입니다 — 연결 테스트
+버튼 하나로 설치까지 자동으로 넘어가면 안 됩니다(안전장치). 아직 프로젝트로
+등록되지 않은 상태(연결 테스트 단계)에서도 써야 해서, `projectId`가 아니라
+연결 테스트와 같은 접속 정보를 그대로 받습니다.
+
+**요청**
+```json
+{ "host": "string", "port": "number", "dbName": "string", "account": "string", "password": "string", "dryRun": "boolean" }
+```
+- `dryRun: true` → 아무것도 설치 안 하고 **"뭘 설치할지" 계획만** 반환(설치 확인창에 SQL 미리 보여주는 용도)
+- `dryRun: false`(또는 생략) → 실제로 설치 실행
+
+**dryRun 응답 (200)**
+```json
+{ "ok": true, "dryRun": true, "plan": [{ "key": "tb_page_hist", "label": "테이블 tb_page_hist", "sql": "CREATE TABLE ..." }], "schema": { "...": "설치 전 상태" } }
+```
+
+**실제 설치 응답 (200)**
+```json
+{ "ok": true, "dryRun": false, "installed": ["테이블 tb_page_hist", "함수·트리거 trg_tb_page_hist"], "schema": { "...": "설치 후 최신 상태" } }
+```
+
+**실패 (400)** — 둘 다 `{ "ok": false, "error": "..." }` 모양
+- `tb_page`/`tb_instance` 자체가 없음: `"RENOBIT이 설치되지 않은 DB입니다 (tb_page/tb_instance 없음) — 자동 설치할 수 없습니다"`
+- DDL 권한 없는 계정으로 시도: `"테이블/트리거를 생성할 권한이 없는 계정입니다 (DDL 권한이 있는 계정으로 다시 시도해 주세요)"`
+
+#### 화면 흐름
+```
+[연결 테스트] 클릭
+  └─ schema.base 확인
+       ├─ tb_page/tb_instance 없음 → 표의 #1, 버튼 비활성화, 끝
+       └─ 있음 → schema.required 확인
+            ├─ 다 있음 → 표의 #3, 버튼 활성화
+            └─ 없는 게 있음 → 표의 #2, 버튼 활성화 + [자동 설치] 버튼 노출
+                 └─ [자동 설치] 클릭
+                      └─ install-schema(dryRun:true) → plan의 SQL을 확인창에 표시
+                           └─ 사용자가 "실행" 확인
+                                └─ install-schema(dryRun:false) → 성공 시 화면 상태를 응답의 schema로 갱신(표의 #3로 전환)
+```
 
 ---
 
@@ -418,6 +490,92 @@ CREATE TABLE tb_history_starred (
 ```
 
 **에러**: `400` id 형식 오류/`important`가 boolean 아님 · `404` 내 프로젝트가 아님
+
+---
+
+### 댓글 목록 조회
+`GET /api/history/:id/comments?projectId=` — 인증 필요
+
+`id`에 달린 댓글/대댓글 전체를 오래된순(대화창처럼 아래로 쌓이는 순서)으로 돌려줍니다.
+모두가 보는 공용 값이라 작성자 구분 없이 그대로 내려갑니다.
+
+**DB 준비 필요**: 대상 DB에 `tb_history_comment` 테이블이 있어야 합니다(없으면 `500`).
+
+**요청**: 없음
+
+**성공 (200)**
+```json
+[
+  {
+    "commentId": 42,
+    "id": "page-39",
+    "parentCommentId": null,
+    "userId": "hjjo2",
+    "userName": "현진",
+    "content": "댓글 내용",
+    "createdAt": "timestamp",
+    "updatedAt": "timestamp"
+  }
+]
+```
+- `parentCommentId`: `null`이면 원댓글, 값이 있으면 그 댓글(comment_id)의 대댓글
+- `userName`은 RHH 관리 DB에서 따로 조회해 붙인 값 — 그 조회가 실패해도 댓글 자체는
+  내려가며, 이때 `userName`은 `null`
+
+**에러**: `400` id 형식 오류 · `404` 내 프로젝트가 아님
+
+---
+
+### 댓글 작성
+`POST /api/history/:id/comments?projectId=` — 인증 필요
+
+작성자는 요청 본문이 아니라 항상 토큰 주인(로그인한 본인)입니다. `parentCommentId`를
+보내면 그 댓글의 대댓글로, 안 보내거나 `null`이면 원댓글로 저장됩니다.
+
+**요청**
+```json
+{ "content": "string (최대 1000자)", "parentCommentId": "number | null (생략 가능)" }
+```
+
+**성공 (201)**: 댓글 목록 조회와 같은 모양의 댓글 객체 하나
+
+**에러**:
+- `400` id 형식 오류 · 댓글 내용 미입력/길이 초과 · `parentCommentId` 형식 오류 ·
+  대댓글 대상이 다른 이력에 달린 댓글인 경우(`"다른 이력에 달린 댓글에는 답글을 달 수 없습니다"`)
+- `404` 내 프로젝트가 아님 · 대댓글을 달려는 원댓글을 찾을 수 없음
+
+---
+
+### 댓글 수정
+`PUT /api/history/comments/:commentId?projectId=` — 인증 필요
+
+**작성자 본인만** 수정할 수 있습니다.
+
+**요청**
+```json
+{ "content": "string (최대 1000자)" }
+```
+
+**성공 (200)**: 댓글 목록 조회와 같은 모양의 댓글 객체
+
+**에러**: `400` 내용 미입력/길이 초과 · `403` 본인이 작성한 댓글이 아님 · `404` 댓글을 찾을 수 없음
+
+---
+
+### 댓글 삭제
+`DELETE /api/history/comments/:commentId?projectId=` — 인증 필요
+
+**작성자 본인만** 삭제할 수 있습니다. 대댓글이 달린 원댓글을 지우면 그 대댓글도
+`ON DELETE CASCADE`로 같이 지워집니다.
+
+**요청**: 없음
+
+**성공 (200)**
+```json
+{ "ok": true }
+```
+
+**에러**: `403` 본인이 작성한 댓글이 아님 · `404` 댓글을 찾을 수 없음
 
 ---
 
